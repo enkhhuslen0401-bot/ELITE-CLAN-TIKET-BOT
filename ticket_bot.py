@@ -37,7 +37,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # ⚙️ ӨӨРИЙН СЕРВЕРИЙН ЖИНХЭНЭ ID-НУУДЫГ ЭНД ОРУУЛНА УУ
 ADMIN_ROLE_ID = 1561373407033958524      # Админ ролийн ID
 TICKET_CATEGORY_ID = 1561358461206528091 # Тикетүүд нээгдэх Support Category ID
-LOG_CHANNEL_ID = 1566358811223138375     # Хаагдсан тикетийн лог очих сувгийн ID
+LOG_CHANNEL_ID = 1566932061497983078     # Хаагдсан тикетийн лог очих сувгийн ID
 
 # Давхар дарж олон суваг үүсэхээс хамгаалах санах ойн түгжээ
 active_creators = set()
