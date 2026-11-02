@@ -36,7 +36,7 @@ intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ⚙️ ӨӨРИЙН СЕРВЕРИЙН ID-НУУДЫГ ЭНД ОРУУЛНА УУ
-ADMIN_ROLE_ID = 123456789012345678      # Админ ролийн ID
+ADMIN_ROLE_ID = 1561373407033958524      # Админ ролийн ID
 TICKET_CATEGORY_ID = 123456789012345678 # Тикетүүд нээгдэх Category ID
 LOG_CHANNEL_ID = 123456789012345678     # Хаагдсан тикетийн лог очих сувгийн ID
 
