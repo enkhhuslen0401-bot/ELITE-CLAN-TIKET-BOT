@@ -1,5 +1,4 @@
 import os
-import io
 import datetime
 import asyncio
 import threading
@@ -35,68 +34,33 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ⚙️ ӨӨРИЙН СЕРВЕРИЙН ID-НУУДЫГ ЭНД ОРУУЛНА УУ
+# ⚙️ ӨӨРИЙН СЕРВЕРИЙН ЖИНХЭНЭ ID-НУУДЫГ ЭНД ОРУУЛНА УУ
 ADMIN_ROLE_ID = 1561373407033958524      # Админ ролийн ID
-TICKET_CATEGORY_ID = 123456789012345678 # Тикетүүд нээгдэх Category ID
-LOG_CHANNEL_ID = 123456789012345678     # Хаагдсан тикетийн лог очих сувгийн ID
+TICKET_CATEGORY_ID = 1561358461206528091 # Тикетүүд нээгдэх Support Category ID
+LOG_CHANNEL_ID = 1566358811223138375     # Хаагдсан тикетийн лог очих сувгийн ID
 
 # ==========================================
-# 3. HTML TRANSCRIPT (LOG) GENERATOR
+# 3. TEXT TRANSCRIPT (EMBED LOG) GENERATOR
 # ==========================================
-async def generate_html_transcript(channel):
+async def generate_text_transcript(channel):
     messages = []
-    async for msg in channel.history(limit=None, oldest_first=True):
-        messages.append(msg)
-
-    html_content = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="utf-8">
-        <title>Ticket Transcript - {channel.name}</title>
-        <style>
-            body {{ font-family: Arial, sans-serif; background-color: #36393f; color: #dcddde; padding: 20px; }}
-            .message {{ border-bottom: 1px solid #4f545c; padding: 10px 0; }}
-            .author {{ font-weight: bold; color: #7289da; }}
-            .timestamp {{ font-size: 0.8em; color: #72767d; margin-left: 10px; }}
-            .content {{ margin-top: 5px; line-height: 1.4; }}
-            .attachment {{ margin-top: 5px; }}
-            .attachment img {{ max-width: 400px; border-radius: 5px; }}
-            a {{ color: #00aff4; }}
-        </style>
-    </head>
-    <body>
-        <h2>Ticket Log: {channel.name}</h2>
-        <hr>
-    """
-
-    for msg in messages:
+    # Сувгийн чатын түүхийг шүүж авах (Хамгийн сүүлийн 50 мессеж)
+    async for msg in channel.history(limit=50, oldest_first=True):
         time_str = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
-        content_text = msg.clean_content.replace("\n", "<br>")
+        content = msg.clean_content
         
-        attachments_html = ""
-        for att in msg.attachments:
-            if any(att.filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp']):
-                attachments_html += f'<div class="attachment"><a href="{att.url}" target="_blank"><img src="{att.url}" alt="Attachment"></a></div>'
-            else:
-                attachments_html += f'<div class="attachment"><a href="{att.url}" target="_blank">📄 Attachment: {att.filename}</a></div>'
-
-        html_content += f"""
-        <div class="message">
-            <span class="author">{msg.author.display_name} ({msg.author.name})</span>
-            <span class="timestamp">{time_str}</span>
-            <div class="content">{content_text}</div>
-            {attachments_html}
-        </div>
-        """
-
-    html_content += """
-    </body>
-    </html>
-    """
+        # Хэрэв зураг эсвэл файл хавсаргасан бол линкийг нь хамт хадгална
+        attachments = [att.url for att in msg.attachments]
+        att_str = f"\n📎 **Файл/Зураг:** " + " | ".join(attachments) if attachments else ""
+        
+        messages.append(f"[`{time_str}`] **{msg.author.name}**: {content}{att_str}")
     
-    file_bytes = html_content.encode('utf-8')
-    return discord.File(fp=io.BytesIO(file_bytes), filename=f"{channel.name}-log.html")
+    transcript_text = "\n\n".join(messages)
+    
+    # Discord embed description лимит (4096 тэмдэгт) хэтрэхээс сэргийлэх
+    if len(transcript_text) > 4000:
+        transcript_text = transcript_text[:3997] + "..."
+    return transcript_text
 
 # ==========================================
 # 4. TICKET CONTROL VIEW (CLAIM & CLOSE)
@@ -121,22 +85,26 @@ class TicketControlView(View):
 
     @discord.ui.button(label="Close", style=discord.ButtonStyle.red, custom_id="close_ticket_btn", emoji="🔒")
     async def close_button(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_message("🔒 Энэ суваг хаагдаж, log рүү хадгалагдаж байна...")
+        await interaction.response.send_message("🔒 Энэ суваг хаагдаж, log бэлтгэгдэж байна...", ephemeral=True)
         
-        transcript_file = await generate_html_transcript(interaction.channel)
+        transcript_content = await generate_text_transcript(interaction.channel)
         log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
         
         if log_channel:
             embed = discord.Embed(
-                title="🎫 Ticket Closed & Logged",
-                description=f"**Ticket:** `{interaction.channel.name}`\n**Closed By:** {interaction.user.mention}",
+                title=f"🎫 Билет Хаагдлаа: {interaction.channel.name}",
+                description=(
+                    f"**Хаасан хэрэглэгч:** {interaction.user.mention}\n"
+                    f"**Сувгийн нэр:** `{interaction.channel.name}`\n\n"
+                    f"**Мессежийн түүх:**\n"
+                    f"{transcript_content if transcript_content else 'Ямар нэгэн мессеж бичигдээгүй байна.'}"
+                ),
                 color=discord.Color.red(),
                 timestamp=datetime.datetime.utcnow()
             )
-            # Зөвхөн Embed болон File илгээнэ (HTML кодыг текстоор харуулахгүй)
-            await log_channel.send(embed=embed, file=transcript_file)
+            await log_channel.send(embed=embed)
 
-        await asyncio.sleep(5)
+        await asyncio.sleep(3)
         await interaction.channel.delete()
 
 # ==========================================
@@ -159,19 +127,30 @@ class TicketSelect(Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
+        if interaction.response.is_done():
+            return
+        
+        await interaction.response.defer(ephemeral=True)
+
         guild = interaction.guild
         member = interaction.user
         selected_value = self.values[0]
 
+        # 🛑 Нэг хэрэглэгч зөвхөн 1 идэвхтэй тикеттэй байх шалгалт
+        for channel in guild.text_channels:
+            if channel.name.endswith(f"-{member.name.lower()}") and channel.name.startswith("ticket-"):
+                await interaction.followup.send(f"❌ Та аль хэдийн идэвхтэй тикет нээсэн байна: {channel.mention}", ephemeral=True)
+                return
+
         admin_role = guild.get_role(ADMIN_ROLE_ID)
-        category = guild.get_channel(TICKET_CATEGORY_ID)  # Товлосон категори
-
+        
+        # 📂 Зөвхөн Support категори дотор үүсгэх
+        category = guild.get_channel(TICKET_CATEGORY_ID)
         if not category or not isinstance(category, discord.CategoryChannel):
-            category = discord.utils.get(guild.categories, name="TICKETS")
+            category = discord.utils.get(guild.categories, name="SUPPORT")
             if not category:
-                category = await guild.create_category("TICKETS")
+                category = await guild.create_category("SUPPORT")
 
-        # 🔒 Эрх тохируулах (Зөвхөн хэрэглэгч, бот, админ харна)
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(read_messages=False),
             member: discord.PermissionOverwrite(read_messages=True, send_messages=True, view_channel=True),
@@ -181,7 +160,8 @@ class TicketSelect(Select):
             overwrites[admin_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True, view_channel=True)
 
         clean_name = selected_value.lower().replace(" ", "-")
-        channel_name = f"ticket-{clean_name}-{member.name}"
+        safe_username = member.name.lower().replace(" ", "-")
+        channel_name = f"ticket-{clean_name}-{safe_username}"
         
         ticket_channel = await guild.create_text_channel(
             name=channel_name, 
@@ -228,7 +208,7 @@ class TicketSelect(Select):
         embed.set_footer(text="Асуудлаа шийдвэрлэсний дараа доорх товчлуураар хаана уу.")
 
         await ticket_channel.send(content=f"{member.mention} {admin_mention}", embed=embed, view=TicketControlView())
-        await interaction.response.send_message(f"✅ Таны билет амжилттай нээгдлээ: {ticket_channel.mention}", ephemeral=True)
+        await interaction.followup.send(f"✅ Таны билет амжилттай нээгдлээ: {ticket_channel.mention}", ephemeral=True)
 
 class TicketView(View):
     def __init__(self):
@@ -274,22 +254,26 @@ async def claim(ctx):
 @bot.command()
 async def close(ctx):
     if ctx.channel.name.startswith("ticket-"):
-        await ctx.send("🔒 Энэ суваг хаагдаж, log рүү хадгалагдаж байна...")
+        await ctx.send("🔒 Энэ суваг хаагдаж, log бэлтгэгдэж байна...")
         
-        transcript_file = await generate_html_transcript(ctx.channel)
+        transcript_content = await generate_text_transcript(ctx.channel)
         log_channel = ctx.guild.get_channel(LOG_CHANNEL_ID)
         
         if log_channel:
             embed = discord.Embed(
-                title="🎫 Ticket Closed & Logged",
-                description=f"**Ticket:** `{ctx.channel.name}`\n**Closed By:** {ctx.author.mention}",
+                title=f"🎫 Билет Хаагдлаа: {ctx.channel.name}",
+                description=(
+                    f"**Хаасан хэрэглэгч:** {ctx.author.mention}\n"
+                    f"**Сувгийн нэр:** `{ctx.channel.name}`\n\n"
+                    f"**Мессежийн түүх:**\n"
+                    f"{transcript_content if transcript_content else 'Ямар нэгэн мессеж бичигдээгүй байна.'}"
+                ),
                 color=discord.Color.red(),
                 timestamp=datetime.datetime.utcnow()
             )
-            # Зөвхөн Embed болон File илгээнэ
-            await log_channel.send(embed=embed, file=transcript_file)
+            await log_channel.send(embed=embed)
 
-        await asyncio.sleep(5)
+        await asyncio.sleep(3)
         await ctx.channel.delete()
     else:
         await ctx.send("❌ Энэ команд зөвхөн тикет суваг дээр ажиллана!", delete_after=5)
@@ -299,5 +283,5 @@ async def close(ctx):
 # ==========================================
 if __name__ == "__main__":
     keep_alive()
-    TOKEN = os.getenv("DISCORD_TOKEN")  # Render Environment Variable-аас токен уншина
+    TOKEN = os.getenv("DISCORD_TOKEN")
     bot.run(TOKEN)
