@@ -36,9 +36,9 @@ intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ⚙️ ӨӨРИЙН СЕРВЕРИЙН ID-НУУДЫГ ЭНД ОРУУЛНА УУ
-ADMIN_ROLE_ID = 992682483348930570      # Админ ролийн ID
-TICKET_CATEGORY_ID = 1561358461206528091 # Тикетүүд нээгдэх Category ID
-LOG_CHANNEL_ID = 1566358811223138375     # Хаагдсан тикетийн лог очих сувгийн ID
+ADMIN_ROLE_ID = 123456789012345678      # Админ ролийн ID
+TICKET_CATEGORY_ID = 123456789012345678 # Тикетүүд нээгдэх Category ID
+LOG_CHANNEL_ID = 123456789012345678     # Хаагдсан тикетийн лог очих сувгийн ID
 
 # ==========================================
 # 3. HTML TRANSCRIPT (LOG) GENERATOR
@@ -133,6 +133,7 @@ class TicketControlView(View):
                 color=discord.Color.red(),
                 timestamp=datetime.datetime.utcnow()
             )
+            # Зөвхөн Embed болон File илгээнэ (HTML кодыг текстоор харуулахгүй)
             await log_channel.send(embed=embed, file=transcript_file)
 
         await asyncio.sleep(5)
@@ -170,7 +171,7 @@ class TicketSelect(Select):
             if not category:
                 category = await guild.create_category("TICKETS")
 
-        # 🔒 Эрх тохируулах (Зөвхөн хэрэглэгч, бот, админ хоёр л харна)
+        # 🔒 Эрх тохируулах (Зөвхөн хэрэглэгч, бот, админ харна)
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(read_messages=False),
             member: discord.PermissionOverwrite(read_messages=True, send_messages=True, view_channel=True),
@@ -285,6 +286,7 @@ async def close(ctx):
                 color=discord.Color.red(),
                 timestamp=datetime.datetime.utcnow()
             )
+            # Зөвхөн Embed болон File илгээнэ
             await log_channel.send(embed=embed, file=transcript_file)
 
         await asyncio.sleep(5)
