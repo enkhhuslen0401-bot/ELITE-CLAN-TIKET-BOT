@@ -14,7 +14,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "ENTE HOLULN Ticket Bot 24/7 амжилттай ажиллаж байна!"
+    return "Ticket Bot 24/7 амжилттай ажиллаж байна!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
@@ -39,17 +39,18 @@ ADMIN_ROLE_ID = 1561373407033958524      # Админ ролийн ID
 TICKET_CATEGORY_ID = 1561358461206528091 # Тикетүүд нээгдэх Support Category ID
 LOG_CHANNEL_ID = 1566358811223138375     # Хаагдсан тикетийн лог очих сувгийн ID
 
+# Давхар дарж олон суваг үүсэхээс хамгаалах санах ойн түгжээ
+active_creators = set()
+
 # ==========================================
 # 3. TEXT TRANSCRIPT (EMBED LOG) GENERATOR
 # ==========================================
 async def generate_text_transcript(channel):
     messages = []
-    # Сувгийн чатын түүхийг шүүж авах (Хамгийн сүүлийн 50 мессеж)
     async for msg in channel.history(limit=50, oldest_first=True):
         time_str = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
         content = msg.clean_content
         
-        # Хэрэв зураг эсвэл файл хавсаргасан бол линкийг нь хамт хадгална
         attachments = [att.url for att in msg.attachments]
         att_str = f"\n📎 **Файл/Зураг:** " + " | ".join(attachments) if attachments else ""
         
@@ -57,7 +58,6 @@ async def generate_text_transcript(channel):
     
     transcript_text = "\n\n".join(messages)
     
-    # Discord embed description лимит (4096 тэмдэгт) хэтрэхээс сэргийлэх
     if len(transcript_text) > 4000:
         transcript_text = transcript_text[:3997] + "..."
     return transcript_text
@@ -136,79 +136,89 @@ class TicketSelect(Select):
         member = interaction.user
         selected_value = self.values[0]
 
-        # 🛑 Нэг хэрэглэгч зөвхөн 1 идэвхтэй тикеттэй байх шалгалт
-        for channel in guild.text_channels:
-            if channel.name.endswith(f"-{member.name.lower()}") and channel.name.startswith("ticket-"):
-                await interaction.followup.send(f"❌ Та аль хэдийн идэвхтэй тикет нээсэн байна: {channel.mention}", ephemeral=True)
-                return
+        # 🛑 Нэг хэрэглэгч дараалж дарж олон суваг үүсгэхээс сэргийлэх түгжээ
+        if member.id in active_creators:
+            await interaction.followup.send("❌ Таны тикет үүсэх явцдаа байна, түр хүлээнэ үү!", ephemeral=True)
+            return
 
-        admin_role = guild.get_role(ADMIN_ROLE_ID)
-        
-        # 📂 Зөвхөн Support категори дотор үүсгэх
-        category = guild.get_channel(TICKET_CATEGORY_ID)
-        if not category or not isinstance(category, discord.CategoryChannel):
-            category = discord.utils.get(guild.categories, name="SUPPORT")
-            if not category:
-                category = await guild.create_category("SUPPORT")
+        active_creators.add(member.id)
+        try:
+            # 🛑 Нэг хэрэглэгч зөвхөн 1 идэвхтэй тикеттэй байх шалгалт
+            for channel in guild.text_channels:
+                if channel.name.endswith(f"-{member.name.lower()}") and channel.name.startswith("ticket-"):
+                    await interaction.followup.send(f"❌ Та аль хэдийн идэвхтэй тикет нээсэн байна: {channel.mention}", ephemeral=True)
+                    return
 
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            member: discord.PermissionOverwrite(read_messages=True, send_messages=True, view_channel=True),
-            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True, view_channel=True)
-        }
-        if admin_role:
-            overwrites[admin_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True, view_channel=True)
+            admin_role = guild.get_role(ADMIN_ROLE_ID)
+            
+            # 📂 Зөвхөн Support категори дотор үүсгэх
+            category = guild.get_channel(TICKET_CATEGORY_ID)
+            if not category or not isinstance(category, discord.CategoryChannel):
+                category = discord.utils.get(guild.categories, name="SUPPORT")
+                if not category:
+                    category = await guild.create_category("SUPPORT")
 
-        clean_name = selected_value.lower().replace(" ", "-")
-        safe_username = member.name.lower().replace(" ", "-")
-        channel_name = f"ticket-{clean_name}-{safe_username}"
-        
-        ticket_channel = await guild.create_text_channel(
-            name=channel_name, 
-            overwrites=overwrites, 
-            category=category
-        )
+            overwrites = {
+                guild.default_role: discord.PermissionOverwrite(read_messages=False),
+                member: discord.PermissionOverwrite(read_messages=True, send_messages=True, view_channel=True),
+                guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True, view_channel=True)
+            }
+            if admin_role:
+                overwrites[admin_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True, view_channel=True)
 
-        admin_mention = admin_role.mention if admin_role else "@admin"
-
-        if selected_value == "Clan Join":
-            embed = discord.Embed(
-                title="🛡️ ELITE CLAN — ЭЛСЭЛТИЙН ШААРДЛАГА",
-                description=(
-                    f"Сайн байна уу, {member.mention}!\n\n"
-                    "**Доорх асуултуудад дарааллаар нь үнэн зөв хариулна уу:**\n"
-                    "1. Нас: Хэдэн настай вэ?\n"
-                    "2. Тоглосон цаг: CS2 дээр нийт хэдэн цаг тоглосон бэ?\n"
-                    "3. Элсэх шалтгаан: Яагаад ELITE clan-д орохыг хүсэж байна вэ?\n"
-                    "4. Өмнөх clan: Өмнө нь ямар ямар clan-д орж байсан бэ?\n"
-                    "5. FACEIT: FACEIT-ийн түвшин хэд вэ?\n"
-                    "6. Premier ELO: Premier горимын одоогийн ELO хэд вэ?\n"
-                    "7. Novacs rank: Novacs дээрх rank чинь хэд вэ?\n"
-                    "8. Хүйс?\n\n"
-                    "━━━━━━━━━━━━━━━━━━━━ **АНХААРУУЛГА**\n"
-                    "Таны хариултаас tax тань 5-20к-д бодогдоно шүү.\n"
-                    "Асуултуудыг бүрэн бөглөсний дараа ELITE-ийн Lounge call-д орж, шалгуулна. "
-                    "Шалгалтад тэнцсэн тохиолдолд clan-д элсэх боломжтой. Баярлалаа. ELITE-д амжилт хүсье!\n\n"
-                    f"{admin_mention} - Админууд хариултыг тань шалгах болно."
-                ),
-                color=discord.Color.gold()
-            )
-        else:
-            embed = discord.Embed(
-                title=f"🎫 {selected_value} - Билет нээгдлээ",
-                description=(
-                    f"Сайн байна уу, {member.mention}!\n\n"
-                    f"Та **{selected_value}** чиглэлээр билет нээсэн байна.\n"
-                    "Бидэнд тулгарсан асуудал болон холбогдох дэлгэрэнгүй мэдээллээ үлдээгээрэй.\n\n"
-                    f"{admin_mention} - Удахгүй админууд тантай холбогдох болно."
-                ),
-                color=discord.Color.blue()
+            clean_name = selected_value.lower().replace(" ", "-")
+            safe_username = member.name.lower().replace(" ", "-")
+            channel_name = f"ticket-{clean_name}-{safe_username}"
+            
+            ticket_channel = await guild.create_text_channel(
+                name=channel_name, 
+                overwrites=overwrites, 
+                category=category
             )
 
-        embed.set_footer(text="Асуудлаа шийдвэрлэсний дараа доорх товчлуураар хаана уу.")
+            admin_mention = admin_role.mention if admin_role else "@admin"
 
-        await ticket_channel.send(content=f"{member.mention} {admin_mention}", embed=embed, view=TicketControlView())
-        await interaction.followup.send(f"✅ Таны билет амжилттай нээгдлээ: {ticket_channel.mention}", ephemeral=True)
+            if selected_value == "Clan Join":
+                embed = discord.Embed(
+                    title="🛡️ ELITE CLAN — ЭЛСЭЛТИЙН ШААРДЛАГА",
+                    description=(
+                        f"Сайн байна уу, {member.mention}!\n\n"
+                        "**Доорх асуултуудад дарааллаар нь үнэн зөв хариулна уу:**\n"
+                        "1. Нас: Хэдэн настай вэ?\n"
+                        "2. Тоглосон цаг: CS2 дээр нийт хэдэн цаг тоглосон бэ?\n"
+                        "3. Элсэх шалтгаан: Яагаад ELITE clan-д орохыг хүсэж байна вэ?\n"
+                        "4. Өмнөх clan: Өмнө нь ямар ямар clan-д орж байсан бэ?\n"
+                        "5. FACEIT: FACEIT-ийн түвшин хэд вэ?\n"
+                        "6. Premier ELO: Premier горимын одоогийн ELO хэд вэ?\n"
+                        "7. Novacs rank: Novacs дээрх rank чинь хэд вэ?\n"
+                        "8. Хүйс?\n\n"
+                        "━━━━━━━━━━━━━━━━━━━━ **АНХААРУУЛГА**\n"
+                        "Таны хариултаас tax тань 5-20к-д бодогдоно шүү.\n"
+                        "Асуултуудыг бүрэн бөглөсний дараа ELITE-ийн Lounge call-д орж, шалгуулна. "
+                        "Шалгалтад тэнцсэн тохиолдолд clan-д элсэх боломжтой. Баярлалаа. ELITE-д амжилт хүсье!\n\n"
+                        f"{admin_mention} - Админууд хариултыг тань шалгах болно."
+                    ),
+                    color=discord.Color.gold()
+                )
+            else:
+                embed = discord.Embed(
+                    title=f"🎫 {selected_value} - Билет нээгдлээ",
+                    description=(
+                        f"Сайн байна уу, {member.mention}!\n\n"
+                        f"Та **{selected_value}** чиглэлээр билет нээсэн байна.\n"
+                        "Бидэнд тулгарсан асуудал болон холбогдох дэлгэрэнгүй мэдээллээ үлдээгээрэй.\n\n"
+                        f"{admin_mention} - Удахгүй админууд тантай холбогдох болно."
+                    ),
+                    color=discord.Color.blue()
+                )
+
+            embed.set_footer(text="Асуудлаа шийдвэрлэсний дараа доорх товчлуураар хаана уу.")
+
+            await ticket_channel.send(content=f"{member.mention} {admin_mention}", embed=embed, view=TicketControlView())
+            await interaction.followup.send(f"✅ Таны билет амжилттай нээгдлээ: {ticket_channel.mention}", ephemeral=True)
+        
+        finally:
+            active_creators.discard(member.id)
 
 class TicketView(View):
     def __init__(self):
